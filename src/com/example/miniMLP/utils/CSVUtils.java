@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class CSVUtils {
+
     public static void savePixelsToCSV(String label, int[][] pixels, int grid, String csvFile) {
         // Center the image before saving
         int[][] centeredPixels = centerImage(pixels, grid);
@@ -31,7 +32,7 @@ public class CSVUtils {
         }
     }
 
-    // New method to center the image within the grid
+    // Method to center the image within the grid
     private static int[][] centerImage(int[][] pixels, int grid) {
         // Find the bounding box of the drawing
         int minX = grid;
@@ -69,13 +70,12 @@ public class CSVUtils {
         int offsetX = (grid - width) / 2;
         int offsetY = (grid - height) / 2;
 
-        // Copy the pixels to the centered position
+        // Copy the pixels into the centered position
         for (int y = minY; y <= maxY; y++) {
             for (int x = minX; x <= maxX; x++) {
                 int newY = y - minY + offsetY;
                 int newX = x - minX + offsetX;
 
-                // Make sure we don't go out of bounds
                 if (newY >= 0 && newY < grid && newX >= 0 && newX < grid) {
                     centered[newY][newX] = pixels[y][x];
                 }
@@ -85,105 +85,71 @@ public class CSVUtils {
         return centered;
     }
 
+    /**
+     * Обучение MLP на полном наборе данных (без валидации).
+     * @param csvFile путь к dataset.csv
+     * @param grid размер сетки (56)
+     * @return обученная модель MLP
+     */
     public static MLP trainMLPFromCSV(String csvFile, int grid) {
         List<float[]> inputList = new ArrayList<>();
         List<float[]> targetList = new ArrayList<>();
+
+        // Считываем весь CSV
         try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
             String line;
             while ((line = br.readLine()) != null) {
                 String[] parts = line.split(",");
-                if (parts.length != 1 + (grid * grid)) continue;
-                String labelStr = parts[0].trim();
+                if (parts.length != 1 + (grid * grid)) {
+                    continue;
+                }
+                String labelStr = parts[0].trim().toLowerCase();
+
                 float[] inVec = new float[grid * grid];
                 for (int i = 0; i < grid * grid; i++) {
                     inVec[i] = Float.parseFloat(parts[i + 1]);
                 }
+
                 int classIndex = symbolToIndex(labelStr);
-                if (classIndex < 0 || classIndex >= 3) continue;
+                if (classIndex < 0 || classIndex >= 3) {
+                    continue;
+                }
                 float[] targetVec = new float[3];
                 targetVec[classIndex] = 1.0f;
+
                 inputList.add(inVec);
                 targetList.add(targetVec);
 
-                // Добавляем аугментацию данных - небольшие смещения и повороты
+                // Добавляем аугментацию данных
                 addAugmentedData(inVec, targetVec, inputList, targetList, grid);
             }
         } catch (IOException e) {
             e.printStackTrace();
             return null;
         }
+
         if (inputList.isEmpty()) {
-            System.err.println("Brak danych szkoleniowych!");
+            System.err.println("Нет обучающих данных!");
             return null;
         }
 
-        // Разделение на обучающую и валидационную выборки
-        int trainSize = (int) (inputList.size() * 0.8);
-        List<float[]> trainInputs = new ArrayList<>();
-        List<float[]> trainTargets = new ArrayList<>();
-        List<float[]> valInputs = new ArrayList<>();
-        List<float[]> valTargets = new ArrayList<>();
+        // Конвертируем списки в массивы
+        float[][] inputs = inputList.toArray(new float[0][]);
+        float[][] targets = targetList.toArray(new float[0][]);
 
-        // Перемешиваем данные
-        Random rnd = new Random(42);
-        for (int i = 0; i < inputList.size(); i++) {
-            int j = rnd.nextInt(inputList.size());
-
-            float[] tempInput = inputList.get(i);
-            inputList.set(i, inputList.get(j));
-            inputList.set(j, tempInput);
-
-            float[] tempTarget = targetList.get(i);
-            targetList.set(i, targetList.get(j));
-            targetList.set(j, tempTarget);
-        }
-
-        // Разделяем на обучающую и валидационную выборки
-        for (int i = 0; i < inputList.size(); i++) {
-            if (i < trainSize) {
-                trainInputs.add(inputList.get(i));
-                trainTargets.add(targetList.get(i));
-            } else {
-                valInputs.add(inputList.get(i));
-                valTargets.add(targetList.get(i));
-            }
-        }
-
-        float[][] trainInputsArray = trainInputs.toArray(new float[0][]);
-        float[][] trainTargetsArray = trainTargets.toArray(new float[0][]);
-
-        MLP mlp = new MLP(grid * grid, 256, 3); // Увеличиваем скрытый слой для лучшей емкости
-        mlp.train(trainInputsArray, trainTargetsArray, 1250, 0.0005f);
-
-        // Проверяем точность на валидационной выборке
-        int correct = 0;
-        for (int i = 0; i < valInputs.size(); i++) {
-            PredictionResult result = mlp.predict(valInputs.get(i));
-            int trueClass = 0;
-            for (int j = 0; j < 3; j++) {
-                if (valTargets.get(i)[j] > 0.5) {
-                    trueClass = j;
-                    break;
-                }
-            }
-
-            if (result.predictedIndex == trueClass && !result.isUncertain) {
-                correct++;
-            }
-        }
-
-        float valAccuracy = (float) correct / valInputs.size();
-        System.out.println("Валидационная точность: " + (valAccuracy * 100) + "%");
+        // Создаём модель и тренируем
+        MLP mlp = new MLP(grid * grid, 256, 3);
+        mlp.train(inputs, targets, 1250, 0.0005f);
 
         return mlp;
     }
 
-    // Метод для аугментации данных
+    // Метод для аугментации
     private static void addAugmentedData(float[] originalInput, float[] originalTarget,
                                          List<float[]> inputList, List<float[]> targetList, int grid) {
         Random rnd = new Random();
 
-        // Преобразуем линейный массив в 2D для удобства манипуляций
+        // Преобразуем 1D массив в 2D
         float[][] image = new float[grid][grid];
         for (int i = 0; i < grid; i++) {
             for (int j = 0; j < grid; j++) {
@@ -207,7 +173,6 @@ public class CSVUtils {
                 }
             }
 
-            // Добавляем в набор данных
             float[] augmentedInput = new float[grid * grid];
             for (int i = 0; i < grid; i++) {
                 for (int j = 0; j < grid; j++) {
@@ -219,21 +184,19 @@ public class CSVUtils {
             targetList.add(originalTarget.clone());
         }
 
-        // 2. Добавление небольшого шума
+        // 2. Добавление шума
         for (int noise = 0; noise < 2; noise++) {
             float[][] noisyImage = new float[grid][grid];
             for (int i = 0; i < grid; i++) {
                 for (int j = 0; j < grid; j++) {
                     noisyImage[i][j] = image[i][j];
-
                     // 5% шанс инвертировать пиксель
-                    if (rnd.nextFloat() < 0.05) {
+                    if (rnd.nextFloat() < 0.05f) {
                         noisyImage[i][j] = 1 - noisyImage[i][j];
                     }
                 }
             }
 
-            // Добавляем в набор данных
             float[] augmentedInput = new float[grid * grid];
             for (int i = 0; i < grid; i++) {
                 for (int j = 0; j < grid; j++) {
@@ -248,41 +211,48 @@ public class CSVUtils {
 
     private static int symbolToIndex(String s) {
         s = s.trim().toLowerCase();
-        if (s.equals("e")) return 0;
-        else if (s.equals("l")) return 1;
-        else if (s.equals("f")) return 2;
-        return -1;
+        return switch (s) {
+            case "e" -> 0;
+            case "l" -> 1;
+            case "f" -> 2;
+            default -> -1;
+        };
     }
 
+    /**
+     * Тестирование: выводит для каждого рисунка confidence,
+     * а в конце среднюю уверенность (вместо точности).
+     * Если хотите вывести точность, нужно собрать метки и сравнивать.
+     */
     public static float testMLPFromCSV(String csvFile, MLP mlp, int grid) {
-        int correct = 0;
         int total = 0;
+        float sumConfidence = 0f; // для вычисления средней уверенности
 
         try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
             String line;
+            int lineIndex = 0;
             while ((line = br.readLine()) != null) {
+                lineIndex++;
                 String[] parts = line.split(",");
                 if (parts.length != 1 + grid * grid) {
                     continue;
                 }
 
-                String labelStr = parts[0].trim().toLowerCase();
-                int classIndex = symbolToIndex(labelStr);
-                if (classIndex < 0) {
-                    continue;
-                }
-
+                // Парсим вход
                 float[] inVec = new float[grid * grid];
                 for (int i = 0; i < grid * grid; i++) {
                     inVec[i] = Float.parseFloat(parts[i + 1]);
                 }
 
+                // Предсказываем
                 PredictionResult result = mlp.predict(inVec);
 
-                if (result.predictedIndex == classIndex) {
-                    correct++;
-                }
+                // Увеличиваем счётчик и суммируем уверенность
                 total++;
+                sumConfidence += result.confidence;
+
+                // Выводим строку:
+                System.out.printf("Рисунок – %d, уверенность – %.2f%%%n", lineIndex, result.confidence * 100);
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -290,8 +260,17 @@ public class CSVUtils {
         }
 
         if (total == 0) {
+            System.out.println("Нет данных для теста (total=0).");
             return 0f;
         }
-        return correct / (float) total;
+
+        // Средняя уверенность
+        float avgConfidence = sumConfidence / total;
+
+        // Выводим её
+        System.out.printf("Средняя уверенность – %.2f%%%n", avgConfidence * 100);
+
+        // Возвращаем, если требуется
+        return avgConfidence;
     }
 }
