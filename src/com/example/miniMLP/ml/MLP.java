@@ -11,8 +11,9 @@ public class MLP implements Serializable {
     private float[][] w2;
     private float[] b2;
 
+    private float bestLoss;
     private float regLambda = 0.001f;
-    private float dropoutRate = 0.2f;
+    private float dropoutRate = 0.3f;
 
     private transient Random rnd = new Random(42);
 
@@ -43,70 +44,53 @@ public class MLP implements Serializable {
 
     public void train(float[][] inputs, float[][] targets, int epochs, float lr) {
         int n = inputs.length;
-
-        // Добавляем early stopping
-        float bestLoss = Float.MAX_VALUE;
+        bestLoss = Float.MAX_VALUE;
         float[][] bestW1 = new float[inputSize][hiddenSize];
         float[] bestB1 = new float[hiddenSize];
         float[][] bestW2 = new float[hiddenSize][outputSize];
         float[] bestB2 = new float[outputSize];
 
-        int patience = 30; // Количество эпох без улучшения
-        int noImprovement = 0;
 
         for (int epoch = 0; epoch < epochs; epoch++) {
             float sumLoss = 0f;
 
-            // Shuffle data
             shuffleData(inputs, targets);
 
             for (int i = 0; i < n; i++) {
                 sumLoss += trainOnExample(inputs[i], targets[i], lr);
             }
-
             float avgLoss = sumLoss / n;
             System.out.println("Epoch " + epoch + " - Loss: " + avgLoss);
 
-            // Check for improvement
             if (avgLoss < bestLoss) {
-                bestLoss = avgLoss;
-                noImprovement = 0;
-
-                // Save best weights
-                copyWeights(w1, bestW1);
-                copyWeights(w2, bestW2);
-                System.arraycopy(b1, 0, bestB1, 0, b1.length);
-                System.arraycopy(b2, 0, bestB2, 0, b2.length);
-            } else {
-                noImprovement++;
-                if (noImprovement >= patience) {
-                    System.out.println("Early stopping at epoch " + epoch);
-                    break;
-                }
+                updateBestWeights(avgLoss, bestW1, bestB1, bestW2, bestB2);
             }
 
-            // Learning rate decay
-            if (epoch % 100 == 0 && epoch > 0) {
-                lr *= 0.9f;
+            if (epoch % 50 == 0 && epoch > 0) {
+                lr *= 0.8f;
             }
         }
-
-        // Restore best weights
         w1 = bestW1;
         b1 = bestB1;
         w2 = bestW2;
         b2 = bestB2;
     }
 
+    private void updateBestWeights(float currentLoss, float[][] bestW1, float[] bestB1, float[][] bestW2, float[] bestB2) {
+        bestLoss = currentLoss;
+        copyWeights(w1, bestW1);
+        copyWeights(w2, bestW2);
+        System.arraycopy(b1, 0, bestB1, 0, b1.length);
+        System.arraycopy(b2, 0, bestB2, 0, b2.length);
+    }
+
+
     private void shuffleData(float[][] inputs, float[][] targets) {
         for (int i = 0; i < inputs.length; i++) {
             int j = rnd.nextInt(inputs.length);
-            // Swap inputs
             float[] tempInput = inputs[i];
             inputs[i] = inputs[j];
             inputs[j] = tempInput;
-
-            // Swap targets
             float[] tempTarget = targets[i];
             targets[i] = targets[j];
             targets[j] = tempTarget;
@@ -120,11 +104,9 @@ public class MLP implements Serializable {
     }
 
     private float trainOnExample(float[] input, float[] target, float lr) {
-        // Forward pass with dropout
         float[] hiddenRaw = new float[hiddenSize];
         float[] hidden = new float[hiddenSize];
         boolean[] dropoutMask = new boolean[hiddenSize];
-
         for (int j = 0; j < hiddenSize; j++) {
             float sum = b1[j];
             for (int i = 0; i < inputSize; i++) {
@@ -133,16 +115,13 @@ public class MLP implements Serializable {
             hiddenRaw[j] = sum;
             hidden[j] = relu(sum);
 
-            // Apply dropout during training
             dropoutMask[j] = rnd.nextFloat() > dropoutRate;
             if (!dropoutMask[j]) {
                 hidden[j] = 0;
             } else {
-                // Scale to maintain same expected value
                 hidden[j] /= (1.0f - dropoutRate);
             }
         }
-
         float[] outputRaw = new float[outputSize];
         float maxLogit = Float.NEGATIVE_INFINITY;
         for (int k = 0; k < outputSize; k++) {
@@ -166,15 +145,13 @@ public class MLP implements Serializable {
             output[k] /= sumExp;
         }
 
-        // Cross-entropy loss with label smoothing
-        float epsilon = 0.1f; // Label smoothing parameter
+        float epsilon = 0.1f;
         float loss = 0f;
         for (int k = 0; k < outputSize; k++) {
             float smoothedTarget = target[k] * (1 - epsilon) + epsilon / outputSize;
             loss -= smoothedTarget * Math.log(output[k] + 1e-7f);
         }
 
-        // Backpropagation
         float[] dOutput = new float[outputSize];
         for (int k = 0; k < outputSize; k++) {
             float smoothedTarget = target[k] * (1 - epsilon) + epsilon / outputSize;
@@ -205,12 +182,10 @@ public class MLP implements Serializable {
         for (int k = 0; k < outputSize; k++) {
             b2[k] -= lr * dOutput[k];
         }
-
         return loss;
     }
 
     public PredictionResult predict(float[] input) {
-        // Forward pass without dropout
         float[] hidden = new float[hiddenSize];
         for (int j = 0; j < hiddenSize; j++) {
             float sum = b1[j];
@@ -219,7 +194,6 @@ public class MLP implements Serializable {
             }
             hidden[j] = relu(sum);
         }
-
         float[] outputRaw = new float[outputSize];
         float maxLogit = Float.NEGATIVE_INFINITY;
         for (int k = 0; k < outputSize; k++) {
@@ -232,7 +206,6 @@ public class MLP implements Serializable {
                 maxLogit = sum;
             }
         }
-
         float[] output = new float[outputSize];
         float sumExp = 0f;
         for (int k = 0; k < outputSize; k++) {
@@ -242,8 +215,6 @@ public class MLP implements Serializable {
         for (int k = 0; k < outputSize; k++) {
             output[k] /= sumExp;
         }
-
-        // Calculate entropy to detect uncertainty
         float entropy = 0;
         for (int k = 0; k < outputSize; k++) {
             if (output[k] > 0) {
@@ -260,13 +231,12 @@ public class MLP implements Serializable {
             }
         }
 
-        // If entropy is high, model is uncertain
         boolean isUncertain = entropy > entropyThreshold;
         return new PredictionResult(bestIndex, bestVal, isUncertain);
     }
 
     private float relu(float x) {
-        return x > 0 ? x : 0.01f * x; // Leaky ReLU
+        return x > 0 ? x : 0.01f * x;
     }
 
     private float reluDerivative(float x) {

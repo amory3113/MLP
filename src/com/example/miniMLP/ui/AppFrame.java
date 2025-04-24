@@ -1,6 +1,7 @@
 package com.example.miniMLP.ui;
 
 import javax.swing.*;
+import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
@@ -12,14 +13,15 @@ import com.example.miniMLP.utils.CSVUtils;
 import com.example.miniMLP.utils.ModelUtils;
 
 public class AppFrame extends JFrame {
-    private static final int WIDTH = 1440;
+    private static final int WIDTH = 1200;
     private static final int HEIGHT = 750;
+    private static final int DRAW_PANEL_WIDTH = 600;
 
-    private final int GRID = 56;
+    private final int GRID = 28;
 
     private BufferedImage canvas;
     private Graphics2D g2;
-    private int[][] binaryPixels = new int[GRID][GRID];
+    private float[][] pixels = new float[GRID][GRID];
 
     private JRadioButton eRadio;
     private JRadioButton lRadio;
@@ -30,137 +32,41 @@ public class AppFrame extends JFrame {
     private DrawingPanel drawingPanel;
 
     public AppFrame() {
-        super("MLP");
+        super("MLP Character Recognition");
+        setupLookAndFeel();
+        
         setSize(WIDTH, HEIGHT);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
-        setLayout(new BorderLayout());
+        setLayout(new BorderLayout(10, 10));
+        
+        // Set background color for the main frame
+        getContentPane().setBackground(new Color(240, 240, 245));
 
-        // Инициализируем холст
-        canvas = new BufferedImage(WIDTH / 2, HEIGHT, BufferedImage.TYPE_BYTE_GRAY);
+        // Create drawing panel on the left side
+        canvas = new BufferedImage(DRAW_PANEL_WIDTH, HEIGHT, BufferedImage.TYPE_BYTE_GRAY);
         g2 = canvas.createGraphics();
         g2.setColor(Color.WHITE);
         g2.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
         g2.setColor(Color.BLACK);
 
         drawingPanel = new DrawingPanel(canvas);
-        add(drawingPanel, BorderLayout.CENTER);
+        drawingPanel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createEmptyBorder(10, 10, 10, 5),
+            BorderFactory.createLineBorder(new Color(150, 150, 150), 1)
+        ));
+        
+        JPanel leftPanel = new JPanel(new BorderLayout());
+        leftPanel.setOpaque(false);
+        leftPanel.add(drawingPanel, BorderLayout.CENTER);
+        
+        add(leftPanel, BorderLayout.WEST);
 
-        // Правая панель (панели с кнопками)
-        JPanel rightPanel = new JPanel();
-        rightPanel.setLayout(new BoxLayout(rightPanel, BoxLayout.Y_AXIS));
-        rightPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        // Create right panel with controls
+        JPanel rightPanel = createControlPanel();
+        add(rightPanel, BorderLayout.CENTER);
 
-        Font btnFont = new Font("Times new roman", Font.BOLD, 40);
-        Font radioFont = new Font("Times new roman", Font.BOLD, 50);
-
-        // ----------- Row1: "czyscic" + "rozpoznac" -----------
-        JPanel row1Panel = new JPanel(new BorderLayout());
-        JPanel row1Left = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        row1Left.setBorder(BorderFactory.createEmptyBorder(0, 25, 0, 0));
-        JButton clearBtn = new JButton("czyscic");
-        clearBtn.setFont(btnFont);
-        clearBtn.setPreferredSize(new Dimension(300, 100));
-        clearBtn.addActionListener(e -> clearCanvas(drawingPanel));
-        row1Left.add(clearBtn);
-
-        JPanel row1Right = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        row1Right.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 25));
-        JButton recognizeBtn = new JButton("rozpoznac");
-        recognizeBtn.setFont(btnFont);
-        recognizeBtn.setPreferredSize(new Dimension(300, 100));
-        recognizeBtn.addActionListener(e -> recognizeSymbol());
-        row1Right.add(recognizeBtn);
-
-        row1Panel.add(row1Left, BorderLayout.WEST);
-        row1Panel.add(row1Right, BorderLayout.EAST);
-        row1Panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, clearBtn.getPreferredSize().height + 10));
-
-        // ----------- Row2: "zapisac" + "ucz MLP" -----------
-        JPanel row2Panel = new JPanel(new BorderLayout());
-        JPanel row2Left = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        row2Left.setBorder(BorderFactory.createEmptyBorder(0, 25, 0, 0));
-        JButton saveBtn = new JButton("zapisac");
-        saveBtn.setFont(btnFont);
-        saveBtn.setPreferredSize(new Dimension(300, 100));
-        saveBtn.addActionListener(e -> {
-            // Сохраняем текущий рисунок в dataset.csv
-            saveToCSV("dataset.csv");
-            clearCanvas(drawingPanel);
-        });
-        row2Left.add(saveBtn);
-
-        JPanel row2Right = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        row2Right.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 25));
-        JButton trainBtn = new JButton("ucz MLP");
-        trainBtn.setFont(btnFont);
-        trainBtn.setPreferredSize(new Dimension(300, 100));
-        trainBtn.addActionListener(e -> trainModel());
-        row2Right.add(trainBtn);
-
-        row2Panel.add(row2Left, BorderLayout.WEST);
-        row2Panel.add(row2Right, BorderLayout.EAST);
-        row2Panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, saveBtn.getPreferredSize().height + 10));
-
-        // ----------- Row3: "Zapisz test" + "testuj" -----------
-        JPanel row3Panel = new JPanel(new BorderLayout());
-        row3Panel.setBorder(BorderFactory.createEmptyBorder(25, 25, 0, 25));
-
-        // Левая кнопка: Сохранение в dataset_test.csv
-        JPanel row3Left = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        JButton saveTestBtn = new JButton("Zapisz test");
-        saveTestBtn.setFont(btnFont);
-        saveTestBtn.setPreferredSize(new Dimension(300, 100));
-        saveTestBtn.addActionListener(e -> {
-            // Сохраняем в dataset_test.csv
-            saveToCSV("dataset_test.csv");
-            clearCanvas(drawingPanel);
-        });
-        row3Left.add(saveTestBtn);
-
-        // Правая кнопка: testuj
-        JPanel row3Right = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton testBtn = new JButton("testuj");
-        testBtn.setFont(btnFont);
-        testBtn.setPreferredSize(new Dimension(300, 100));
-        testBtn.addActionListener(e -> testAction());
-        row3Right.add(testBtn);
-
-        row3Panel.add(row3Left, BorderLayout.WEST);
-        row3Panel.add(row3Right, BorderLayout.EAST);
-        row3Panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, saveTestBtn.getPreferredSize().height + 10));
-
-        // ----------- Радиокнопки e / l / f -----------
-        eRadio = new JRadioButton("e", true);
-        eRadio.setFont(radioFont);
-        lRadio = new JRadioButton("l");
-        lRadio.setFont(radioFont);
-        fRadio = new JRadioButton("f");
-        fRadio.setFont(radioFont);
-
-        ButtonGroup group = new ButtonGroup();
-        group.add(eRadio);
-        group.add(lRadio);
-        group.add(fRadio);
-
-        JPanel radioPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 150, 0));
-        radioPanel.setBorder(BorderFactory.createEmptyBorder(25, 25, 0, 25));
-        radioPanel.add(eRadio);
-        radioPanel.add(lRadio);
-        radioPanel.add(fRadio);
-
-        // Добавляем все row-панели на правую панель
-        rightPanel.add(row1Panel);
-        rightPanel.add(Box.createVerticalStrut(10));
-        rightPanel.add(row2Panel);
-        rightPanel.add(Box.createVerticalStrut(10));
-        rightPanel.add(row3Panel);
-        rightPanel.add(Box.createVerticalStrut(10));
-        rightPanel.add(radioPanel);
-
-        add(rightPanel, BorderLayout.EAST);
-
-        // Если модель уже есть на диске, загрузим её
+        // Load model if exists
         String modelPath = "mlpModel.bin";
         if (new File(modelPath).exists()) {
             mlpModel = ModelUtils.loadModel(modelPath);
@@ -168,8 +74,131 @@ public class AppFrame extends JFrame {
 
         setVisible(true);
     }
+    
+    private void setupLookAndFeel() {
+        try {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } catch (Exception e) {
+            System.out.println("Could not set system look and feel: " + e);
+        }
+    }
 
-    // Очищаем холст
+    private JPanel createControlPanel() {
+        JPanel controlPanel = new JPanel();
+        controlPanel.setLayout(new BoxLayout(controlPanel, BoxLayout.Y_AXIS));
+        controlPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        controlPanel.setOpaque(false);
+
+        // Common button style
+        Font buttonFont = new Font("Arial", Font.BOLD, 18);
+        Dimension buttonSize = new Dimension(250, 80);
+        
+        // Create action buttons panel
+        JPanel actionsPanel = new JPanel();
+        actionsPanel.setOpaque(false);
+        actionsPanel.setLayout(new GridLayout(3, 2, 30, 30));
+        actionsPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 20, 0));
+        
+        // Clear Button
+        JButton clearBtn = createStyledButton("Clear", buttonFont);
+        clearBtn.setPreferredSize(buttonSize);
+        clearBtn.addActionListener(e -> clearCanvas(drawingPanel));
+        actionsPanel.add(clearBtn);
+        
+        // Recognize Button
+        JButton recognizeBtn = createStyledButton("Recognize", buttonFont);
+        recognizeBtn.setPreferredSize(buttonSize);
+        recognizeBtn.addActionListener(e -> recognizeSymbol());
+        actionsPanel.add(recognizeBtn);
+        
+        // Save Button
+        JButton saveBtn = createStyledButton("Save to Dataset", buttonFont);
+        saveBtn.setPreferredSize(buttonSize);
+        saveBtn.addActionListener(e -> {
+            saveToCSV("dataset.csv");
+            clearCanvas(drawingPanel);
+        });
+        actionsPanel.add(saveBtn);
+        
+        // Train Button
+        JButton trainBtn = createStyledButton("Train MLP", buttonFont);
+        trainBtn.setPreferredSize(buttonSize);
+        trainBtn.addActionListener(e -> trainModel());
+        actionsPanel.add(trainBtn);
+        
+        // Save Test Button
+        JButton saveTestBtn = createStyledButton("Save to Test", buttonFont);
+        saveTestBtn.setPreferredSize(buttonSize);
+        saveTestBtn.addActionListener(e -> {
+            saveToCSV("dataset_test.csv");
+            clearCanvas(drawingPanel);
+        });
+        actionsPanel.add(saveTestBtn);
+        
+        // Test Button
+        JButton testBtn = createStyledButton("Test Model", buttonFont);
+        testBtn.setPreferredSize(buttonSize);
+        testBtn.addActionListener(e -> testAction());
+        actionsPanel.add(testBtn);
+
+        controlPanel.add(actionsPanel);
+        
+        // Radio buttons for label selection
+        JPanel radioPanel = new JPanel();
+        radioPanel.setLayout(new FlowLayout(FlowLayout.CENTER, 60, 20));
+        radioPanel.setOpaque(false);
+        TitledBorder titledBorder = BorderFactory.createTitledBorder(
+            BorderFactory.createLineBorder(new Color(150, 150, 150), 1),
+            "Wybierz litere",
+            TitledBorder.CENTER,
+            TitledBorder.TOP,
+            new Font("Arial", Font.BOLD, 20)
+        );
+        titledBorder.setTitleColor(Color.BLACK);
+        radioPanel.setBorder(titledBorder);
+
+        Font radioFont = new Font("Arial", Font.BOLD, 36);
+        
+        eRadio = new JRadioButton("e");
+        eRadio.setFont(radioFont);
+        eRadio.setOpaque(false);
+        eRadio.setForeground(Color.BLACK);
+        
+        lRadio = new JRadioButton("l");
+        lRadio.setFont(radioFont);
+        lRadio.setOpaque(false);
+        lRadio.setForeground(Color.BLACK);
+        
+        fRadio = new JRadioButton("f");
+        fRadio.setFont(radioFont);
+        fRadio.setOpaque(false);
+        fRadio.setForeground(Color.BLACK);
+
+        ButtonGroup group = new ButtonGroup();
+        group.add(eRadio);
+        group.add(lRadio);
+        group.add(fRadio);
+
+        radioPanel.add(eRadio);
+        radioPanel.add(lRadio);
+        radioPanel.add(fRadio);
+
+        controlPanel.add(radioPanel);
+        
+        // Add some vertical glue to push everything up
+        controlPanel.add(Box.createVerticalGlue());
+        
+        return controlPanel;
+    }
+    
+    private JButton createStyledButton(String text, Font font) {
+        JButton button = new JButton(text);
+        button.setFont(font);
+        button.setBackground(Color.BLACK);
+        button.setFocusPainted(false);
+        return button;
+    }
+
     private void clearCanvas(JPanel drawingPanel) {
         g2.setColor(Color.WHITE);
         g2.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
@@ -177,17 +206,22 @@ public class AppFrame extends JFrame {
         drawingPanel.repaint();
     }
 
-    // Распознаём нарисованный символ
     private void recognizeSymbol() {
         if (mlpModel == null) {
-            JOptionPane.showMessageDialog(this, "Najpierw wytrenuj model lub pobierz go!");
+            JOptionPane.showMessageDialog(this, 
+                "You need to train the model first or load an existing one!", 
+                "Not Ready", 
+                JOptionPane.INFORMATION_MESSAGE);
             return;
         }
         readPixelsFromCanvas();
 
-        int[][] centeredPixels = centerImage(binaryPixels, GRID);
+        float[][] centeredPixels = centerImage(pixels, GRID);
         if (isEmptyDrawing(centeredPixels)) {
-            JOptionPane.showMessageDialog(this, "Нарисуйте что-то для распознавания!");
+            JOptionPane.showMessageDialog(this, 
+                "No drawing detected. Please draw something first.", 
+                "Empty Drawing", 
+                JOptionPane.INFORMATION_MESSAGE);
             return;
         }
 
@@ -196,72 +230,129 @@ public class AppFrame extends JFrame {
         String symbol = indexToSymbol(result.predictedIndex);
 
         if (result.isUncertain || result.confidence < 0.7f) {
-            JOptionPane.showMessageDialog(this, "Символ не распознан! Система неуверена в предсказании.");
+            JOptionPane.showMessageDialog(this, 
+                "The model is not confident about this character.", 
+                "Uncertain Prediction", 
+                JOptionPane.INFORMATION_MESSAGE);
         } else {
-            String confidenceText = String.format("%.2f%%", result.confidence * 100);
-            JOptionPane.showMessageDialog(this, "MLP уверена, что это: " + symbol +
-                    " (вероятность: " + confidenceText + ")");
+            String confidenceText = String.format("%.2f", result.confidence * 100);
+            JOptionPane.showMessageDialog(this, 
+                "The model predicts: " + symbol + "\nConfidence: " + confidenceText + "%", 
+                "Prediction Result", 
+                JOptionPane.INFORMATION_MESSAGE);
         }
     }
 
-    // Сохраняем текущий рисунок с выбранной меткой в указанный CSV (dataset.csv или dataset_test.csv)
     private void saveToCSV(String csvFile) {
         readPixelsFromCanvas();
         String label = getSelectedLabel();
         if (label == null) {
-            JOptionPane.showMessageDialog(this, "Не выбрана буква (e/l/f)!");
+            JOptionPane.showMessageDialog(this, 
+                "Please select a character (e/l/f) before saving.", 
+                "Selection Required", 
+                JOptionPane.INFORMATION_MESSAGE);
             return;
         }
-        CSVUtils.savePixelsToCSV(label, binaryPixels, GRID, csvFile);
-        // Можно вывести сообщение, что сохранилось
-        // JOptionPane.showMessageDialog(this, "Сохранено в файл: " + csvFile);
+        CSVUtils.savePixelsToCSV(label, pixels, GRID, csvFile);
+        JOptionPane.showMessageDialog(this, 
+            "Sample saved successfully to " + csvFile, 
+            "Saved", 
+            JOptionPane.INFORMATION_MESSAGE);
     }
 
-    // Обучение модели (использует dataset.csv)
     private void trainModel() {
-        mlpModel = CSVUtils.trainMLPFromCSV("dataset.csv", GRID);
-        if (mlpModel != null) {
-            ModelUtils.saveModel(mlpModel, "mlpModel.bin");
-            JOptionPane.showMessageDialog(this, "Модель успешно обучена и сохранена (mlpModel.bin)!");
-        }
+        setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+        
+        SwingWorker<Void, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() {
+                mlpModel = CSVUtils.trainMLPFromCSV("dataset.csv", GRID);
+                if (mlpModel != null) {
+                    ModelUtils.saveModel(mlpModel, "mlpModel.bin");
+                }
+                return null;
+            }
+            
+            @Override
+            protected void done() {
+                setCursor(Cursor.getDefaultCursor());
+                if (mlpModel != null) {
+                    JOptionPane.showMessageDialog(AppFrame.this, 
+                        "The model has been successfully trained and saved (mlpModel.bin)!", 
+                        "Training Complete", 
+                        JOptionPane.INFORMATION_MESSAGE);
+                } else {
+                    JOptionPane.showMessageDialog(AppFrame.this, 
+                        "Training failed. Please check the dataset file.", 
+                        "Training Error", 
+                        JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        };
+        
+        worker.execute();
     }
 
-    // Тестируем модель на файле dataset_test.csv
     private void testAction() {
         if (mlpModel == null) {
-            JOptionPane.showMessageDialog(this,
-                    "Сначала обучите модель (ucz MLP) или загрузите её!");
+            JOptionPane.showMessageDialog(this, 
+                "You need to train the model first or load an existing one!", 
+                "Not Ready", 
+                JOptionPane.INFORMATION_MESSAGE);
             return;
         }
 
         String testCsvFile = "dataset_test.csv";
         File f = new File(testCsvFile);
         if (!f.exists()) {
-            JOptionPane.showMessageDialog(this,
-                    "Файл для теста не найден: " + testCsvFile);
+            JOptionPane.showMessageDialog(this, 
+                "Test dataset file not found: " + testCsvFile, 
+                "Missing File", 
+                JOptionPane.ERROR_MESSAGE);
             return;
         }
 
-        float accuracy = CSVUtils.testMLPFromCSV(testCsvFile, mlpModel, GRID);
-        float percentage = accuracy * 100f;
-        JOptionPane.showMessageDialog(this,
-                "Точность на тестовом наборе (" + testCsvFile + "): " + percentage + " %");
-    }
-
-    // Проверяем, не пустой ли рисунок
-    private boolean isEmptyDrawing(int[][] pixels) {
-        int pixelCount = 0;
-        for (int y = 0; y < GRID; y++) {
-            for (int x = 0; x < GRID; x++) {
-                if (pixels[y][x] > 0) {
-                    pixelCount++;
+        setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+        
+        SwingWorker<Float, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Float doInBackground() {
+                return CSVUtils.testMLPFromCSV(testCsvFile, mlpModel, GRID);
+            }
+            
+            @Override
+            protected void done() {
+                setCursor(Cursor.getDefaultCursor());
+                try {
+                    float accuracy = get();
+                    JOptionPane.showMessageDialog(AppFrame.this, 
+                        "Classification accuracy: " + Math.round(accuracy * 100) + "%\n" + 
+                        "The model correctly identified " + Math.round(accuracy * 100) + " out of 100 test images",
+                        "Test Results",
+                        JOptionPane.INFORMATION_MESSAGE);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    JOptionPane.showMessageDialog(AppFrame.this, 
+                        "An error occurred during testing.", 
+                        "Error", 
+                        JOptionPane.ERROR_MESSAGE);
                 }
             }
-        }
-        return pixelCount < (GRID * GRID * 0.01);
+        };
+        
+        worker.execute();
     }
 
-    // Читаем пиксели с холста в массив binaryPixels
+    private boolean isEmptyDrawing(float[][] pix) {
+        int count = 0;
+        for (int y = 0; y < GRID; y++) {
+            for (int x = 0; x < GRID; x++) {
+                if (pix[y][x] > 0.05f) count++;
+            }
+        }
+        return count < GRID * GRID * 0.01;
+    }
+
     private void readPixelsFromCanvas() {
         int cellSize = canvas.getWidth() / GRID;
         for (int y = 0; y < GRID; y++) {
@@ -277,64 +368,52 @@ public class AppFrame extends JFrame {
                         }
                     }
                 }
-                double ratio = blackCount / (double) (cellSize * cellSize);
-                binaryPixels[y][x] = (ratio > 0.2) ? 1 : 0;
+                double ratio = blackCount / (double)(cellSize * cellSize);
+                pixels[y][x] = (float) ratio;
             }
         }
     }
 
-    // Центрирование изображения
-    private int[][] centerImage(int[][] pixels, int grid) {
+    private static float[][] centerImage(float[][] pix, int grid) {
         int minX = grid, minY = grid, maxX = 0, maxY = 0;
         boolean hasContent = false;
 
-        for (int y = 0; y < grid; y++) {
-            for (int x = 0; x < grid; x++) {
-                if (pixels[y][x] > 0) {
+        for (int y = 0; y < grid; y++)
+            for (int x = 0; x < grid; x++)
+                if (pix[y][x] > 0) {
                     hasContent = true;
                     minX = Math.min(minX, x);
                     minY = Math.min(minY, y);
                     maxX = Math.max(maxX, x);
                     maxY = Math.max(maxY, y);
                 }
-            }
-        }
-        if (!hasContent) {
-            return pixels; // Пустое изображение
-        }
 
-        int[][] centered = new int[grid][grid];
-        int width = maxX - minX + 1;
+        if (!hasContent) return pix;
+
+        float[][] centered = new float[grid][grid];
+        int width  = maxX - minX + 1;
         int height = maxY - minY + 1;
+        int offX = (grid - width)  / 2;
+        int offY = (grid - height) / 2;
 
-        int offsetX = (grid - width) / 2;
-        int offsetY = (grid - height) / 2;
-
-        for (int y = minY; y <= maxY; y++) {
+        for (int y = minY; y <= maxY; y++)
             for (int x = minX; x <= maxX; x++) {
-                int newY = y - minY + offsetY;
-                int newX = x - minX + offsetX;
-                if (newY >= 0 && newY < grid && newX >= 0 && newX < grid) {
-                    centered[newY][newX] = pixels[y][x];
-                }
+                int ny = y - minY + offY;
+                int nx = x - minX + offX;
+                centered[ny][nx] = pix[y][x];
             }
-        }
         return centered;
     }
 
-    // Конвертация 2D массива в float-вектор
-    private float[] convertToFloatVector(int[][] arr) {
+    private float[] convertToFloatVector(float[][] arr) {
         float[] vec = new float[GRID * GRID];
-        int index = 0;
-        for (int y = 0; y < GRID; y++) {
-            for (int x = 0; x < GRID; x++) {
-                vec[index++] = arr[y][x];
-            }
-        }
+        int k = 0;
+        for (int y = 0; y < GRID; y++)
+            for (int x = 0; x < GRID; x++)
+                vec[k++] = arr[y][x];
         return vec;
     }
 
-    // Определяем, какая буква выбрана
     private String getSelectedLabel() {
         if (eRadio.isSelected()) return "e";
         if (lRadio.isSelected()) return "l";
@@ -342,7 +421,6 @@ public class AppFrame extends JFrame {
         return null;
     }
 
-    // Индекс -> буква
     private String indexToSymbol(int idx) {
         switch (idx) {
             case 0: return "e";
@@ -352,3 +430,4 @@ public class AppFrame extends JFrame {
         }
     }
 }
+

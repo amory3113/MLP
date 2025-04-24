@@ -10,92 +10,60 @@ import java.util.List;
 
 public class CSVUtils {
 
-    public static void savePixelsToCSV(String label, int[][] pixels, int grid, String csvFile) {
-        // Center the image before saving
-        int[][] centeredPixels = centerImage(pixels, grid);
+    public static void savePixelsToCSV(String label, float[][] pix, int grid, String csvFile) {
+        float[][] centered = centerImage(pix, grid);
 
         try (FileWriter fw = new FileWriter(csvFile, true)) {
             StringBuilder sb = new StringBuilder();
-            sb.append(label).append(",");
-            for (int y = 0; y < grid; y++) {
+            sb.append(label).append(',');
+            for (int y = 0; y < grid; y++)
                 for (int x = 0; x < grid; x++) {
-                    sb.append(centeredPixels[y][x]);
-                    if (!(y == grid - 1 && x == grid - 1)) {
-                        sb.append(",");
-                    }
+                    sb.append(centered[y][x]);
+                    if (!(y == grid - 1 && x == grid - 1)) sb.append(',');
                 }
-            }
-            sb.append("\n");
+            sb.append('\n');
             fw.write(sb.toString());
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    // Method to center the image within the grid
-    private static int[][] centerImage(int[][] pixels, int grid) {
-        // Find the bounding box of the drawing
-        int minX = grid;
-        int minY = grid;
-        int maxX = 0;
-        int maxY = 0;
+
+    private static float[][] centerImage(float[][] pix, int grid) {
+        int minX = grid, minY = grid, maxX = 0, maxY = 0;
         boolean hasContent = false;
 
-        // Find boundaries of the drawing
-        for (int y = 0; y < grid; y++) {
-            for (int x = 0; x < grid; x++) {
-                if (pixels[y][x] > 0) {
+        for (int y = 0; y < grid; y++)
+            for (int x = 0; x < grid; x++)
+                if (pix[y][x] > 0) {
                     hasContent = true;
                     minX = Math.min(minX, x);
                     minY = Math.min(minY, y);
                     maxX = Math.max(maxX, x);
                     maxY = Math.max(maxY, y);
                 }
-            }
-        }
 
-        // If no drawing found, return original
-        if (!hasContent) {
-            return pixels;
-        }
+        if (!hasContent) return pix;
 
-        // Create a new grid with the centered image
-        int[][] centered = new int[grid][grid];
-
-        // Calculate width and height of drawing
-        int width = maxX - minX + 1;
+        float[][] centered = new float[grid][grid];
+        int width  = maxX - minX + 1;
         int height = maxY - minY + 1;
+        int offX = (grid - width)  / 2;
+        int offY = (grid - height) / 2;
 
-        // Calculate offsets to center
-        int offsetX = (grid - width) / 2;
-        int offsetY = (grid - height) / 2;
-
-        // Copy the pixels into the centered position
-        for (int y = minY; y <= maxY; y++) {
+        for (int y = minY; y <= maxY; y++)
             for (int x = minX; x <= maxX; x++) {
-                int newY = y - minY + offsetY;
-                int newX = x - minX + offsetX;
-
-                if (newY >= 0 && newY < grid && newX >= 0 && newX < grid) {
-                    centered[newY][newX] = pixels[y][x];
-                }
+                int ny = y - minY + offY;
+                int nx = x - minX + offX;
+                centered[ny][nx] = pix[y][x];
             }
-        }
-
         return centered;
     }
 
-    /**
-     * Обучение MLP на полном наборе данных (без валидации).
-     * @param csvFile путь к dataset.csv
-     * @param grid размер сетки (56)
-     * @return обученная модель MLP
-     */
+
     public static MLP trainMLPFromCSV(String csvFile, int grid) {
         List<float[]> inputList = new ArrayList<>();
         List<float[]> targetList = new ArrayList<>();
-
-        // Считываем весь CSV
         try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
             String line;
             while ((line = br.readLine()) != null) {
@@ -120,7 +88,6 @@ public class CSVUtils {
                 inputList.add(inVec);
                 targetList.add(targetVec);
 
-                // Добавляем аугментацию данных
                 addAugmentedData(inVec, targetVec, inputList, targetList, grid);
             }
         } catch (IOException e) {
@@ -129,35 +96,28 @@ public class CSVUtils {
         }
 
         if (inputList.isEmpty()) {
-            System.err.println("Нет обучающих данных!");
+            System.err.println("Brak danych szkoleniowych!");
             return null;
         }
 
-        // Конвертируем списки в массивы
         float[][] inputs = inputList.toArray(new float[0][]);
         float[][] targets = targetList.toArray(new float[0][]);
 
-        // Создаём модель и тренируем
-        MLP mlp = new MLP(grid * grid, 256, 3);
-        mlp.train(inputs, targets, 1250, 0.0005f);
+        MLP mlp = new MLP(grid * grid, 128, 3);
+        mlp.train(inputs, targets, 600, 0.01f);
 
         return mlp;
     }
 
-    // Метод для аугментации
     private static void addAugmentedData(float[] originalInput, float[] originalTarget,
                                          List<float[]> inputList, List<float[]> targetList, int grid) {
         Random rnd = new Random();
-
-        // Преобразуем 1D массив в 2D
         float[][] image = new float[grid][grid];
         for (int i = 0; i < grid; i++) {
             for (int j = 0; j < grid; j++) {
                 image[i][j] = originalInput[i * grid + j];
             }
         }
-
-        // 1. Небольшой сдвиг (±2 пикселя)
         for (int shift = 0; shift < 3; shift++) {
             int dx = rnd.nextInt(5) - 2;
             int dy = rnd.nextInt(5) - 2;
@@ -179,18 +139,15 @@ public class CSVUtils {
                     augmentedInput[i * grid + j] = shiftedImage[i][j];
                 }
             }
-
             inputList.add(augmentedInput);
             targetList.add(originalTarget.clone());
         }
 
-        // 2. Добавление шума
         for (int noise = 0; noise < 2; noise++) {
             float[][] noisyImage = new float[grid][grid];
             for (int i = 0; i < grid; i++) {
                 for (int j = 0; j < grid; j++) {
                     noisyImage[i][j] = image[i][j];
-                    // 5% шанс инвертировать пиксель
                     if (rnd.nextFloat() < 0.05f) {
                         noisyImage[i][j] = 1 - noisyImage[i][j];
                     }
@@ -203,7 +160,6 @@ public class CSVUtils {
                     augmentedInput[i * grid + j] = noisyImage[i][j];
                 }
             }
-
             inputList.add(augmentedInput);
             targetList.add(originalTarget.clone());
         }
@@ -219,14 +175,9 @@ public class CSVUtils {
         };
     }
 
-    /**
-     * Тестирование: выводит для каждого рисунка confidence,
-     * а в конце среднюю уверенность (вместо точности).
-     * Если хотите вывести точность, нужно собрать метки и сравнивать.
-     */
     public static float testMLPFromCSV(String csvFile, MLP mlp, int grid) {
         int total = 0;
-        float sumConfidence = 0f; // для вычисления средней уверенности
+        int correct = 0;
 
         try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
             String line;
@@ -238,21 +189,29 @@ public class CSVUtils {
                     continue;
                 }
 
-                // Парсим вход
+                // Get the true label from the CSV
+                String trueLabel = parts[0].trim().toLowerCase();
+                int trueIndex = symbolToIndex(trueLabel);
+                if (trueIndex < 0) {
+                    System.out.println("Nieprawidłowa etykieta w linii " + lineIndex + ": " + trueLabel);
+                    continue;
+                }
+
                 float[] inVec = new float[grid * grid];
                 for (int i = 0; i < grid * grid; i++) {
                     inVec[i] = Float.parseFloat(parts[i + 1]);
                 }
 
-                // Предсказываем
                 PredictionResult result = mlp.predict(inVec);
-
-                // Увеличиваем счётчик и суммируем уверенность
                 total++;
-                sumConfidence += result.confidence;
+                
+                // Check if prediction is correct
+                if (result.predictedIndex == trueIndex) {
+                    correct++;
+                }
 
-                // Выводим строку:
-                System.out.printf("Рисунок – %d, уверенность – %.2f%%%n", lineIndex, result.confidence * 100);
+                String predictedLabel = indexToSymbol(result.predictedIndex);
+                System.out.printf("Rysunek %d: prawdziwy=%s, przewidywany=%s, pewność=%.2f%n", lineIndex, trueLabel, predictedLabel, result.confidence);
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -260,17 +219,23 @@ public class CSVUtils {
         }
 
         if (total == 0) {
-            System.out.println("Нет данных для теста (total=0).");
+            System.out.println("Brak danych dla testu.");
             return 0f;
         }
 
-        // Средняя уверенность
-        float avgConfidence = sumConfidence / total;
-
-        // Выводим её
-        System.out.printf("Средняя уверенность – %.2f%%%n", avgConfidence * 100);
-
-        // Возвращаем, если требуется
-        return avgConfidence;
+        float accuracy = (float) correct / total;
+        System.out.printf("Razem testów: %d, Poprawnych: %d%n", total, correct);
+        System.out.printf("Dokładność: %.2f%n", accuracy);
+        
+        return accuracy;
+    }
+    
+    private static String indexToSymbol(int idx) {
+        switch (idx) {
+            case 0: return "e";
+            case 1: return "l";
+            case 2: return "f";
+            default: return "?";
+        }
     }
 }
