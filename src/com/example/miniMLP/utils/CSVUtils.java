@@ -2,7 +2,6 @@ package com.example.miniMLP.utils;
 
 import com.example.miniMLP.ml.MLP;
 import com.example.miniMLP.ml.PredictionResult;
-import java.util.Random;
 
 import java.io.*;
 import java.util.ArrayList;
@@ -12,13 +11,13 @@ public class CSVUtils {
 
     public static void savePixelsToCSV(String label, float[][] pix, int grid, String csvFile) {
         float[][] centered = centerImage(pix, grid);
-
+        float[][] binaryPixels = convertToBinary(centered, 0.1f);
         try (FileWriter fw = new FileWriter(csvFile, true)) {
             StringBuilder sb = new StringBuilder();
             sb.append(label).append(',');
             for (int y = 0; y < grid; y++)
                 for (int x = 0; x < grid; x++) {
-                    sb.append(centered[y][x]);
+                    sb.append((int)binaryPixels[y][x]); // Cast to int to ensure 0 or 1
                     if (!(y == grid - 1 && x == grid - 1)) sb.append(',');
                 }
             sb.append('\n');
@@ -28,11 +27,21 @@ public class CSVUtils {
         }
     }
 
+    private static float[][] convertToBinary(float[][] pixels, float threshold) {
+        int height = pixels.length;
+        int width = pixels[0].length;
+        float[][] binaryPixels = new float[height][width];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                binaryPixels[y][x] = pixels[y][x] > threshold ? 1.0f : 0.0f;
+            }
+        }
+        return binaryPixels;
+    }
 
     private static float[][] centerImage(float[][] pix, int grid) {
         int minX = grid, minY = grid, maxX = 0, maxY = 0;
         boolean hasContent = false;
-
         for (int y = 0; y < grid; y++)
             for (int x = 0; x < grid; x++)
                 if (pix[y][x] > 0) {
@@ -42,8 +51,8 @@ public class CSVUtils {
                     maxX = Math.max(maxX, x);
                     maxY = Math.max(maxY, y);
                 }
-
-        if (!hasContent) return pix;
+        if (!hasContent)
+            return pix;
 
         float[][] centered = new float[grid][grid];
         int width  = maxX - minX + 1;
@@ -59,7 +68,6 @@ public class CSVUtils {
             }
         return centered;
     }
-
 
     public static MLP trainMLPFromCSV(String csvFile, int grid) {
         List<float[]> inputList = new ArrayList<>();
@@ -87,8 +95,6 @@ public class CSVUtils {
 
                 inputList.add(inVec);
                 targetList.add(targetVec);
-
-                addAugmentedData(inVec, targetVec, inputList, targetList, grid);
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -102,67 +108,9 @@ public class CSVUtils {
 
         float[][] inputs = inputList.toArray(new float[0][]);
         float[][] targets = targetList.toArray(new float[0][]);
-
         MLP mlp = new MLP(grid * grid, 128, 3);
         mlp.train(inputs, targets, 600, 0.01f);
-
         return mlp;
-    }
-
-    private static void addAugmentedData(float[] originalInput, float[] originalTarget,
-                                         List<float[]> inputList, List<float[]> targetList, int grid) {
-        Random rnd = new Random();
-        float[][] image = new float[grid][grid];
-        for (int i = 0; i < grid; i++) {
-            for (int j = 0; j < grid; j++) {
-                image[i][j] = originalInput[i * grid + j];
-            }
-        }
-        for (int shift = 0; shift < 3; shift++) {
-            int dx = rnd.nextInt(5) - 2;
-            int dy = rnd.nextInt(5) - 2;
-
-            float[][] shiftedImage = new float[grid][grid];
-            for (int i = 0; i < grid; i++) {
-                for (int j = 0; j < grid; j++) {
-                    int newI = i + dy;
-                    int newJ = j + dx;
-                    if (newI >= 0 && newI < grid && newJ >= 0 && newJ < grid) {
-                        shiftedImage[i][j] = image[newI][newJ];
-                    }
-                }
-            }
-
-            float[] augmentedInput = new float[grid * grid];
-            for (int i = 0; i < grid; i++) {
-                for (int j = 0; j < grid; j++) {
-                    augmentedInput[i * grid + j] = shiftedImage[i][j];
-                }
-            }
-            inputList.add(augmentedInput);
-            targetList.add(originalTarget.clone());
-        }
-
-        for (int noise = 0; noise < 2; noise++) {
-            float[][] noisyImage = new float[grid][grid];
-            for (int i = 0; i < grid; i++) {
-                for (int j = 0; j < grid; j++) {
-                    noisyImage[i][j] = image[i][j];
-                    if (rnd.nextFloat() < 0.05f) {
-                        noisyImage[i][j] = 1 - noisyImage[i][j];
-                    }
-                }
-            }
-
-            float[] augmentedInput = new float[grid * grid];
-            for (int i = 0; i < grid; i++) {
-                for (int j = 0; j < grid; j++) {
-                    augmentedInput[i * grid + j] = noisyImage[i][j];
-                }
-            }
-            inputList.add(augmentedInput);
-            targetList.add(originalTarget.clone());
-        }
     }
 
     private static int symbolToIndex(String s) {
@@ -178,7 +126,6 @@ public class CSVUtils {
     public static float testMLPFromCSV(String csvFile, MLP mlp, int grid) {
         int total = 0;
         int correct = 0;
-
         try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
             String line;
             int lineIndex = 0;
@@ -189,7 +136,6 @@ public class CSVUtils {
                     continue;
                 }
 
-                // Get the true label from the CSV
                 String trueLabel = parts[0].trim().toLowerCase();
                 int trueIndex = symbolToIndex(trueLabel);
                 if (trueIndex < 0) {
@@ -201,11 +147,8 @@ public class CSVUtils {
                 for (int i = 0; i < grid * grid; i++) {
                     inVec[i] = Float.parseFloat(parts[i + 1]);
                 }
-
                 PredictionResult result = mlp.predict(inVec);
                 total++;
-                
-                // Check if prediction is correct
                 if (result.predictedIndex == trueIndex) {
                     correct++;
                 }
@@ -226,7 +169,6 @@ public class CSVUtils {
         float accuracy = (float) correct / total;
         System.out.printf("Razem testów: %d, Poprawnych: %d%n", total, correct);
         System.out.printf("Dokładność: %.2f%n", accuracy);
-        
         return accuracy;
     }
     

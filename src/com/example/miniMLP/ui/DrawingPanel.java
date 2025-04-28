@@ -9,13 +9,12 @@ public class DrawingPanel extends JPanel {
     private BufferedImage canvas;
     private Graphics2D g2;
     private Point lastPoint;
-    private int drawSize = 20;
+    private int drawSize = 13;
 
     public DrawingPanel(BufferedImage canvas) {
         this.canvas = canvas;
         setPreferredSize(new Dimension(canvas.getWidth(), canvas.getHeight()));
         setBackground(Color.WHITE);
-
         g2 = canvas.createGraphics();
         g2.setColor(Color.BLACK);
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -25,16 +24,13 @@ public class DrawingPanel extends JPanel {
                 lastPoint = e.getPoint();
                 drawPoint(e.getPoint());
             }
-            
             @Override
             public void mouseDragged(MouseEvent e) {
                 Point currentPoint = e.getPoint();
-                // Draw a line between last point and current point for smooth drawing
                 drawLine(lastPoint, currentPoint);
                 lastPoint = currentPoint;
             }
         };
-        
         addMouseListener(mouseAdapter);
         addMouseMotionListener(mouseAdapter);
     }
@@ -53,8 +49,6 @@ public class DrawingPanel extends JPanel {
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
-        
-        // Draw background grid (lighter)
         g.setColor(new Color(240, 240, 240));
         int gridSize = 20;
         for (int x = 0; x < getWidth(); x += gridSize) {
@@ -63,7 +57,6 @@ public class DrawingPanel extends JPanel {
         for (int y = 0; y < getHeight(); y += gridSize) {
             g.drawLine(0, y, getWidth(), y);
         }
-
         g.drawImage(canvas, 0, 0, null);
     }
 }
